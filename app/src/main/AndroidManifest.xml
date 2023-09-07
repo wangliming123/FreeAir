@@ -30,9 +30,10 @@
         <service
             android:name=".GuardService"
             android:enabled="true"
-            android:exported="false"
-            android:label="FreeAir屏障服务"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            android:exported="true"
+            android:label="FreeAir广告滚蛋服务"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:persistent="true">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
             </intent-filter>

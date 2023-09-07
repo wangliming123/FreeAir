@@ -18,10 +18,10 @@ import kotlinx.coroutines.withContext
 class MainActivity : AppCompatActivity() {
 
     val tvStatus: TextView by lazy { findViewById(R.id.tv_service_status) }
-    val tvRuleStatus: TextView by lazy { findViewById(R.id.tv_rule_status) }
+//    val tvRuleStatus: TextView by lazy { findViewById(R.id.tv_rule_status) }
     val openService: Button by lazy { findViewById(R.id.bt_open_service) }
     val setBattery: Button by lazy { findViewById(R.id.bt_set_battery) }
-    val loadRule: Button by lazy { findViewById(R.id.bt_load_rule) }
+//    val loadRule: Button by lazy { findViewById(R.id.bt_load_rule) }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -54,20 +54,20 @@ class MainActivity : AppCompatActivity() {
             refreshServiceStatusUI()
         }
 
-        loadRule.setOnClickListener {
-
-            lifecycleScope.launch {
-                withContext(Dispatchers.IO) {
-                    RuleHelper.initRule(resources)
-                }
-                if (RuleHelper.ruleList.isNullOrEmpty()) {
-                    Toast.makeText(this@MainActivity, "自定义规则列表加载失败...", Toast.LENGTH_SHORT).show();
-                } else {
-
-                    Toast.makeText(this@MainActivity, "自定义规则列表已加载...", Toast.LENGTH_SHORT).show();
-                }
-            }
-        }
+//        loadRule.setOnClickListener {
+//
+//            lifecycleScope.launch {
+//                withContext(Dispatchers.IO) {
+//                    RuleHelper.initRule(resources)
+//                }
+//                if (RuleHelper.ruleList.isNullOrEmpty()) {
+//                    Toast.makeText(this@MainActivity, "自定义规则列表加载失败...", Toast.LENGTH_SHORT).show();
+//                } else {
+//
+//                    Toast.makeText(this@MainActivity, "自定义规则列表已加载...", Toast.LENGTH_SHORT).show();
+//                }
+//            }
+//        }
 
 
     }
@@ -82,17 +82,17 @@ class MainActivity : AppCompatActivity() {
      * */
     private fun refreshServiceStatusUI() {
         if (GuardService.isServiceEnable) {
-            tvStatus.text = "跳过广告服务状态：已开启"
+            tvStatus.text = "忽略广告服务状态：已开启"
 //            mToOpenBt.visibility = View.GONE
         } else {
-            tvStatus.text = "跳过广告服务状态：未开启"
+            tvStatus.text = "忽略广告服务状态：未开启"
 //            mToOpenBt.visibility = View.VISIBLE
         }
-        if (!RuleHelper.ruleList.isNullOrEmpty()) {
-            tvRuleStatus.text = "规则加载状态(加载规则后支持更多场景)：已加载"
-        } else {
-            tvRuleStatus.text = "规则加载状态(加载规则后支持更多场景)：未加载"
-        }
+//        if (!RuleHelper.ruleList.isNullOrEmpty()) {
+//            tvRuleStatus.text = "规则加载状态(加载规则后支持更多场景)：已加载"
+//        } else {
+//            tvRuleStatus.text = "规则加载状态(加载规则后支持更多场景)：未加载"
+//        }
 
     }
 }

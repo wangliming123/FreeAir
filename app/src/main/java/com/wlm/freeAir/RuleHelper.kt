@@ -2,6 +2,10 @@ package com.wlm.freeAir
 
 import android.content.res.Resources
 import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
@@ -11,11 +15,12 @@ import java.io.InputStreamReader
 
 object RuleHelper {
 
-    private const val TAG = "RuleHelper"
+    private const val TAG = "GuardService"
 
     var ruleList: List<RuleEntity>? = null
 
     fun initRule(resources: Resources) {
+
         ruleList = readJsonToRuleList(resources)
     }
 
@@ -53,7 +58,7 @@ object RuleHelper {
                     ruleEntityList.add(ruleEntity)
                 }
             }
-            Log.d(TAG, "自定义规则列表已加载...")
+            Log.d(TAG, "自定义规则列表已加载...${ruleEntityList.size}")
 
             FlowBus.postEvent(RuleLoadEvent())
             return ruleEntityList

@@ -1,6 +1,10 @@
 package com.wlm.freeAir
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.GestureDescription
+import android.accessibilityservice.GestureDescription.StrokeDescription
+import android.graphics.Path
+import android.graphics.Rect
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -8,6 +12,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.regex.Pattern
+
 
 class GuardService : AccessibilityService() {
 
@@ -23,7 +29,7 @@ class GuardService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-
+        RuleHelper.initRule(resources)
         instance = this
         FlowBus.postEvent(ServiceEnableEvent())
     }
@@ -33,41 +39,48 @@ class GuardService : AccessibilityService() {
         instance = null
     }
 
-    /**
-     * 获得当前视图根节点
-     * */
-    private fun getCurrentRootNode() = try {
-        rootInActiveWindow
-    } catch (e: Exception) {
-        e.message?.let { Log.e(TAG, it) }
-        null
-    }
-
+    private var lastPackageName: String? = null
+    private var lastTime: Long = 0
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        MainScope().launch {
+        if (event == null || event.packageName == null) return
+        Log.e(TAG, "${event.eventType}")
+        try {
+            val pattern = "^com.android.*"
+            if (Pattern.matches(pattern, event.packageName.toString())) return
+            if (event.packageName.toString() == "android") return
+            if (event.packageName.toString().contains("inputmethod")) return
+            if (event.className.toString().contains("android.view.")) return
 
-            withContext(Dispatchers.Default) {
-                val node1 = searchNode("跳过")
-                if (node1 != null) {
-                    Log.e(TAG, "找到跳过")
-                    withContext(Dispatchers.Main) {
-                        node1.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            if (lastPackageName == null) {
+                this.lastPackageName = event.packageName.toString()
+                this.lastTime = 0
+            } else {
+                if (this.lastPackageName.equals(event.packageName.toString())) {
+                    this.lastTime++
+                    if (this.lastTime >= 30) {
+//                        Log.d(TAG, "onAccessibilityEvent: 不执行...")
+                        return
                     }
-                }
-                RuleHelper.ruleList?.forEach {
-                    it.popupRules.forEach { rule ->
-                        if (searchNode(rule.id) != null) {
-                            val node = searchNode(rule.action)
-                            if (node != null) {
-                                withContext(Dispatchers.Main) {
-                                    node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                                }
-                            }
-                        }
-                    }
+                } else {
+                    this.lastPackageName = event.packageName.toString()
+                    this.lastTime = 0
+                    Log.d(TAG, "onAccessibilityEvent: " + this.lastPackageName + "新开启应用...重置时间")
                 }
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
+
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            Log.d(TAG, "try skip ${event.packageName}")
+            try {
+                skip(event.source)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+
 
 //        event?.let {
 //            // 在这里写跳过广告的逻辑
@@ -81,21 +94,128 @@ class GuardService : AccessibilityService() {
 //        }
     }
 
-    /**
-     * 递归遍历查找匹配文本或id结点
-     * 结点id的构造规则：包名:id/具体id
-     * */
-    private fun searchNode(filter: String): AccessibilityNodeInfo? {
-        val rootNode = getCurrentRootNode()
-        if (rootNode != null) {
-            rootNode.findAccessibilityNodeInfosByText(filter).takeUnless { e -> e.isNullOrEmpty() }
-                ?.let { return it[0] }
-            if (!rootNode.packageName.isNullOrBlank()) {
-                rootNode.findAccessibilityNodeInfosByViewId("${rootNode.packageName}:id/$filter")
-                    .takeUnless { it.isNullOrEmpty() }?.let { return it[0] }
+    private fun skip(node: AccessibilityNodeInfo?) {
+        node ?: return
+
+        MainScope().launch {
+            withContext(Dispatchers.Default) {
+
+                if (!skipConfig(node)) {
+                    skipText(node)
+                }
             }
         }
+    }
+
+    private suspend fun skipConfig(node: AccessibilityNodeInfo?): Boolean {
+        node ?: return false
+        if (node.packageName.isNullOrEmpty()) {
+            return false
+        }
+        RuleHelper.ruleList?.forEach {
+            it.popupRules.forEach { rule ->
+                try {
+                    if (search(node, rule.id) != null) {
+                        val actionNode = search(node, rule.action)
+                        if (actionNode != null) {
+                            withContext(Dispatchers.Main) {
+                                Log.d(TAG, "skipConfig ${node.packageName} ${rule.id} ${rule.action}")
+                                skipClick(actionNode)
+                            }
+                            return true
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.i(TAG, "error ${rule.id} ${rule.action}")
+                    e.printStackTrace()
+                }
+            }
+        }
+        return false
+    }
+
+    private fun search(node: AccessibilityNodeInfo, filter: String): AccessibilityNodeInfo? {
+        node.findAccessibilityNodeInfosByText(filter).takeUnless { e -> e.isNullOrEmpty() }?.let {
+            return it[0]
+        }
+        node.findAccessibilityNodeInfosByViewId("${node.packageName}:id/$filter")
+            .takeUnless {  e -> e.isNullOrEmpty() }?.let { return it[0] }
+
         return null
     }
+
+    private suspend fun skipText(nodeInfo: AccessibilityNodeInfo?) {
+        nodeInfo?:return
+
+        Log.d(TAG, "try findText  ${nodeInfo.packageName}")
+        val accessibilityNodeInfoList =
+            nodeInfo.findAccessibilityNodeInfosByText("跳过").takeUnless { e -> e.isNullOrEmpty() }
+        if (!accessibilityNodeInfoList.isNullOrEmpty()) {
+            val findNodeInfo = accessibilityNodeInfoList[0]
+            var text = findNodeInfo.text
+            if (text.length <= 10) {
+                text = text.toString().replace(" ", "")
+                val pattern = "^[0-9]跳过.*"
+                val pattern002 = "^跳过[\\s\\S]{0,5}"
+                val pattern003 = "^[0-9][sS秒]跳过.*"
+                if (Pattern.matches(pattern, text) || Pattern.matches(
+                        pattern002,
+                        text
+                    ) || Pattern.matches(pattern003, text)
+                ) {
+                    Log.d(TAG, "skipText 找到了跳过 ${findNodeInfo.packageName}")
+                    withContext(Dispatchers.Main) {
+                        skipClick(findNodeInfo)
+                    }
+                }
+            }
+        } else {
+//            Log.d(TAG, "findJumpText: 找不到跳过")
+        }
+    }
+
+    private fun skipClick(nodeInfo: AccessibilityNodeInfo) {
+        val isClick: Boolean = nodeInfo.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        val rect = Rect()
+        nodeInfo.getBoundsInScreen(rect)
+//        dispatchGesture(new GestureDescription())
+        //        dispatchGesture(new GestureDescription())
+        if (!isClick) {
+            onTouch(rect)
+        }
+    }
+    private fun onTouch(rect: Rect) {
+        Log.d(TAG, "====onTouch====")
+        if (rect.bottom > 0 && rect.right > 0) {
+            val rectHeight = rect.bottom - rect.top
+            val rectWidth = rect.right - rect.left
+            rect.left = rect.left + rectWidth / 3
+            rect.top = rect.top + rectHeight / 3
+        }
+        val b = dispatchGesture(createClick(rect.left.toFloat(), rect.top.toFloat()), object : GestureResultCallback() {
+            override fun onCancelled(gestureDescription: GestureDescription) {
+                super.onCancelled(gestureDescription)
+                Log.d(TAG, "onCancelled====")
+            }
+
+            override fun onCompleted(gestureDescription: GestureDescription) {
+                super.onCompleted(gestureDescription)
+                Log.d(TAG, "onCompleted===")
+            }
+        }, null)
+        Log.d(TAG, "dispatchGesture====>>>$b")
+    }
+
+    private fun createClick(x: Float, y: Float): GestureDescription {
+        // for a single tap a duration of 1 ms is enough
+        val DURATION = 1
+        val clickPath = Path()
+        clickPath.moveTo(x, y)
+        val clickStroke = StrokeDescription(clickPath, 0, DURATION.toLong())
+        val clickBuilder = GestureDescription.Builder()
+        clickBuilder.addStroke(clickStroke)
+        return clickBuilder.build()
+    }
+
 
 }
