@@ -50,9 +50,9 @@ class MainActivity : AppCompatActivity() {
         FlowBus.with(ServiceEnableEvent::class.java).register(this) {
             refreshServiceStatusUI()
         }
-        FlowBus.with(RuleLoadEvent::class.java).register(this) {
-            refreshServiceStatusUI()
-        }
+//        FlowBus.with(RuleLoadEvent::class.java).register(this) {
+//            refreshServiceStatusUI()
+//        }
 
 //        loadRule.setOnClickListener {
 //

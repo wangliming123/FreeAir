@@ -39,46 +39,47 @@ class GuardService : AccessibilityService() {
         instance = null
     }
 
-    private var lastPackageName: String? = null
-    private var lastTime: Long = 0
+//    private var lastPackageName: String? = null
+//    private var lastTime: Long = 0
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null || event.packageName == null) return
-        Log.e(TAG, "${event.eventType}")
+        if (event.packageName.toString() == "com.wlm.freeAir") return
+        if (event.packageName.toString() == "com.miui.home") return
         try {
             val pattern = "^com.android.*"
             if (Pattern.matches(pattern, event.packageName.toString())) return
-            if (event.packageName.toString() == "android") return
+//            if (event.packageName.toString() == "android") return
             if (event.packageName.toString().contains("inputmethod")) return
             if (event.className.toString().contains("android.view.")) return
 
-            if (lastPackageName == null) {
-                this.lastPackageName = event.packageName.toString()
-                this.lastTime = 0
-            } else {
-                if (this.lastPackageName.equals(event.packageName.toString())) {
-                    this.lastTime++
-                    if (this.lastTime >= 30) {
-//                        Log.d(TAG, "onAccessibilityEvent: 不执行...")
-                        return
-                    }
-                } else {
-                    this.lastPackageName = event.packageName.toString()
-                    this.lastTime = 0
-                    Log.d(TAG, "onAccessibilityEvent: " + this.lastPackageName + "新开启应用...重置时间")
-                }
-            }
+//            if (lastPackageName == null) {
+//                this.lastPackageName = event.packageName.toString()
+//                this.lastTime = 0
+//            } else {
+//                if (this.lastPackageName.equals(event.packageName.toString())) {
+//                    this.lastTime++
+//                    if (this.lastTime >= 30) {
+////                        Log.d(TAG, "onAccessibilityEvent: 不执行...")
+//                        return
+//                    }
+//                } else {
+//                    this.lastPackageName = event.packageName.toString()
+//                    this.lastTime = 0
+//                    Log.d(TAG, "onAccessibilityEvent: " + this.lastPackageName + "新开启应用...重置时间")
+//                }
+//            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
+//        Log.e(TAG, "${event.eventType}")
 
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
-            Log.d(TAG, "try skip ${event.packageName}")
+//        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
             try {
-                skip(event.source)
+                skip(event)
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e(TAG, "skip error", e)
             }
-        }
+//        }
 
 
 
@@ -94,41 +95,41 @@ class GuardService : AccessibilityService() {
 //        }
     }
 
-    private fun skip(node: AccessibilityNodeInfo?) {
+    private fun skip(event: AccessibilityEvent) {
+        val node = event.source
         node ?: return
+        Log.d(TAG, "try skip ${event.packageName} ${event.packageName.hashCode()} ${RuleHelper.ruleMap.contains(event.packageName.hashCode().toString())}")
 
         MainScope().launch {
             withContext(Dispatchers.Default) {
-
-                if (!skipConfig(node)) {
+                if (!skipConfig(event)) {
                     skipText(node)
                 }
             }
         }
     }
 
-    private suspend fun skipConfig(node: AccessibilityNodeInfo?): Boolean {
+    private suspend fun skipConfig(event: AccessibilityEvent): Boolean {
+
+        val node = event.source
         node ?: return false
         if (node.packageName.isNullOrEmpty()) {
             return false
         }
-        RuleHelper.ruleList?.forEach {
-            it.popupRules.forEach { rule ->
-                try {
-                    if (search(node, rule.id) != null) {
-                        val actionNode = search(node, rule.action)
-                        if (actionNode != null) {
-                            withContext(Dispatchers.Main) {
-                                Log.d(TAG, "skipConfig ${node.packageName} ${rule.id} ${rule.action}")
-                                skipClick(actionNode)
-                            }
-                            return true
+        RuleHelper.ruleMap[event.packageName.hashCode().toString()]?.popupRules?.forEach { rule ->
+            try {
+                if (search(node, rule.id) != null) {
+                    val actionNode = search(node, rule.action)
+                    if (actionNode != null) {
+                        withContext(Dispatchers.Main) {
+                            Log.d(TAG, "skipConfig ${node.packageName} ${rule.id} ${rule.action}")
+                            skipClick(actionNode)
                         }
+                        return true
                     }
-                } catch (e: Exception) {
-                    Log.i(TAG, "error ${rule.id} ${rule.action}")
-                    e.printStackTrace()
                 }
+            } catch (e: Exception) {
+                Log.i(TAG, "error ${rule.id} ${rule.action}")
             }
         }
         return false
@@ -147,7 +148,7 @@ class GuardService : AccessibilityService() {
     private suspend fun skipText(nodeInfo: AccessibilityNodeInfo?) {
         nodeInfo?:return
 
-        Log.d(TAG, "try findText  ${nodeInfo.packageName}")
+        Log.d(TAG, "try skipText  ${nodeInfo.packageName}")
         val accessibilityNodeInfoList =
             nodeInfo.findAccessibilityNodeInfosByText("跳过").takeUnless { e -> e.isNullOrEmpty() }
         if (!accessibilityNodeInfoList.isNullOrEmpty()) {
